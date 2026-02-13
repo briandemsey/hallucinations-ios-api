@@ -34,6 +34,7 @@ app.add_middleware(
 from app.auth import send_otp, verify_otp_code
 from app.ai_models import query_all_models
 from app.analysis import calculate_h_score, run_team_analysis
+from app.web_search import get_web_search_context, is_web_search_available
 
 
 # ============= REQUEST/RESPONSE MODELS =============
@@ -62,6 +63,12 @@ class QueryRequest(BaseModel):
     enable_blue_team: bool = True
     enable_purple_team: bool = True
     show_metadata: bool = True
+    enable_web_search: bool = True
+    enable_truth_verification: bool = True
+    enable_contradiction: bool = True
+    conversation_id: Optional[str] = None
+    analysis_depth: str = "standard"
+    file_context: Optional[str] = None
 
 class AIResponse(BaseModel):
     model: str
@@ -85,6 +92,7 @@ class QueryResponse(BaseModel):
     responses: List[AIResponse]
     h_score: Optional[HScore] = None
     team_analysis: Optional[TeamAnalysis] = None
+    web_search_used: bool = False
 
 
 # ============= AUTHENTICATION ENDPOINTS =============
@@ -146,11 +154,20 @@ async def query_endpoint(
         raise HTTPException(status_code=401, detail="Unauthorized - missing token")
 
     try:
+        # Get web search context if enabled
+        web_context = None
+        web_search_used = False
+        if request.enable_web_search and request.analysis_depth in ["standard", "comprehensive"]:
+            if is_web_search_available():
+                web_context = get_web_search_context(request.query)
+                web_search_used = web_context is not None
+
         # Query all 8 AI models in parallel
         model_responses = await query_all_models(
             query=request.query,
             enable_rag=request.enable_rag,
-            show_metadata=request.show_metadata
+            show_metadata=request.show_metadata,
+            web_context=web_context
         )
 
         # Run team analyses if enabled
@@ -183,7 +200,8 @@ async def query_endpoint(
                 for resp in model_responses
             ],
             h_score=HScore(**h_score),
-            team_analysis=TeamAnalysis(**team_analysis) if team_analysis else None
+            team_analysis=TeamAnalysis(**team_analysis) if team_analysis else None,
+            web_search_used=web_search_used
         )
 
     except Exception as e:
