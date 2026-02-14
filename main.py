@@ -33,7 +33,7 @@ app.add_middleware(
 # Import modules (to be created)
 from app.auth import send_otp, verify_otp_code
 from app.ai_models import query_all_models
-from app.analysis import calculate_h_score, run_team_analysis
+from app.analysis import calculate_h_score, run_team_analysis, perform_contradiction_analysis
 from app.web_search import get_web_search_context, is_web_search_available
 
 
@@ -92,6 +92,7 @@ class QueryResponse(BaseModel):
     responses: List[AIResponse]
     h_score: Optional[HScore] = None
     team_analysis: Optional[TeamAnalysis] = None
+    contradiction_analysis: Optional[str] = None
     web_search_used: bool = False
 
 
@@ -181,6 +182,20 @@ async def query_endpoint(
                 enable_purple=request.enable_purple_team
             )
 
+        # Run contradiction analysis if enabled
+        contradiction_analysis = None
+        if request.enable_contradiction:
+            import asyncio
+            from concurrent.futures import ThreadPoolExecutor
+            loop = asyncio.get_event_loop()
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                contradiction_analysis = await loop.run_in_executor(
+                    executor,
+                    perform_contradiction_analysis,
+                    request.query,
+                    model_responses
+                )
+
         # Calculate H-Score
         h_score = calculate_h_score(
             responses=model_responses,
@@ -201,6 +216,7 @@ async def query_endpoint(
             ],
             h_score=HScore(**h_score),
             team_analysis=TeamAnalysis(**team_analysis) if team_analysis else None,
+            contradiction_analysis=contradiction_analysis,
             web_search_used=web_search_used
         )
 

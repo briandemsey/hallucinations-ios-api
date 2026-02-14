@@ -100,7 +100,7 @@ def call_gemini(prompt: str, enable_rag: bool = True, show_metadata: bool = Fals
         full_prompt = f"{web_context}\n\nUSER QUERY: {prompt}"
 
     try:
-        model = genai.GenerativeModel("models/gemini-2.0-flash-exp")
+        model = genai.GenerativeModel("gemini-2.0-flash")
         response = model.generate_content(full_prompt)
         answer = response.text.strip()
 
